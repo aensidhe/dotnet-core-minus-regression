@@ -1,6 +1,7 @@
 using System;
 using System.Buffers;
 using System.Buffers.Binary;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Running;
@@ -60,13 +61,27 @@ namespace reproduction
         }
 
         [Benchmark]
-        public int MinusLocalNoPack()
+        public unsafe void Pointer()
         {
-            var i = 0;
-            var local = baseInt;
-            for (; i < length; i++)
-                local -= i;
-            return local;
+            fixed (byte* pointer = &_buffer[0])
+            {
+                for (var i = 0; i < length; i++)
+                {
+                    Unsafe.WriteUnaligned(ref pointer[i * 4], baseInt);
+                }
+            }
+        }
+
+        [Benchmark]
+        public unsafe void PointerMinus()
+        {
+            fixed (byte* pointer = &_buffer[0])
+            {
+                for (var i = 0; i < length; i++)
+                {
+                    Unsafe.WriteUnaligned(ref pointer[i * 4], baseInt-i);
+                }
+            }
         }
 
         [Benchmark]
