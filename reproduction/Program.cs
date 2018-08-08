@@ -11,107 +11,81 @@ namespace reproduction
     public static class Program
     {
         public static void Main(string[] args) => BenchmarkRunner.Run<MinusBenchmark>();
+
+        public static byte ThrowWrongRangeCodeException(byte code, byte min, byte max) => throw new InvalidOperationException(
+            $"Wrong data code: 0x{code:x2}. Expected: 0x{min:x2} <= code <= 0x{max:x2}."
+        );
     }
 
     [MemoryDiagnoser]
-    [DisassemblyDiagnoser(true, true)]
+    [DisassemblyDiagnoser(false , true)]
     [Q3Column]
     public class MinusBenchmark
     {
-        private const ushort length = 100;
-        private const int baseInt = 1 << 30;
+        private const uint length = 100;
+        private uint baseInt = 99000;
         private readonly byte[] _buffer = ArrayPool<byte>.Shared.Rent(short.MaxValue);
 
         [Benchmark(Baseline = true)]
-        public int NoMinus()
+        public int Span()
         {
-            var i = 0;
+            var buffer = _buffer.AsSpan();
+            int i = 0;
             for (; i < length; i++)
-                BinaryPrimitives.WriteInt32BigEndian(_buffer, baseInt);
+            {
+                baseInt -= 1000u;
+                MsgPackSpecSpan.WriteUInt32(buffer.Slice(5 * i), baseInt);
+            }
+
             return i;
         }
 
         [Benchmark]
-        public int Minus()
+        public int SpanConst()
         {
-            var i = 0;
+            var buffer = _buffer.AsSpan();
+            int i = 0;
             for (; i < length; i++)
-                BinaryPrimitives.WriteInt32BigEndian(_buffer, baseInt - i);
+            {
+                baseInt -= 1000u;
+                MsgPackSpecSpan.WriteUInt32(buffer.Slice(5 * i), length);
+            }
+
             return i;
         }
 
         [Benchmark]
-        public int MinusLocalVar()
-        {
-            var i = 0;
-            var local = baseInt;
-            for (; i < length; i++)
-                BinaryPrimitives.WriteInt32BigEndian(_buffer, local - i);
-            return i;
-        }
-
-        [Benchmark]
-        public int MinusLocalConst()
-        {
-            var i = 0;
-            const int local = baseInt;
-            for (; i < length; i++)
-                BinaryPrimitives.WriteInt32BigEndian(_buffer, local - i);
-            return i;
-        }
-
-        [Benchmark]
-        public unsafe void Pointer()
+        public unsafe int Fixed()
         {
             fixed (byte* pointer = &_buffer[0])
             {
-                for (var i = 0; i < length; i++)
+                int i = 0;
+                for (; i < length; i++)
                 {
-                    Unsafe.WriteUnaligned(ref pointer[i * 4], baseInt);
+                    baseInt -= 1000;
+                    MsgPackSpecPointer.WriteUInt32(pointer, 5 * i, baseInt);
                 }
+
+                return i;
             }
         }
 
         [Benchmark]
-        public unsafe void PointerMinus()
-        {
-            fixed (byte* pointer = &_buffer[0])
-            {
-                for (var i = 0; i < length; i++)
-                {
-                    Unsafe.WriteUnaligned(ref pointer[i * 4], baseInt-i);
-                }
-            }
-        }
+        public uint C() => CNative.SerializeInts(length);
 
         [Benchmark]
-        public void CArray() => CNative.SerializeArray();
-
-        [Benchmark]
-        public void CArrayMinus() => CNative.SerializeArrayMinus();
-
-        [Benchmark]
-        public void CppArray() => CppNative.SerializeArray();
-
-        [Benchmark]
-        public void CppArrayMinus() => CppNative.SerializeArrayMinus();
+        public uint Cpp() => CppNative.SerializeInts(length);
 
         private static class CNative
         {
-            [DllImport("libcMsgPack.so", EntryPoint = "serializeIntArray", CallingConvention = CallingConvention.Cdecl)]
-            public static extern void SerializeArray();
-
-            [DllImport("libcMsgPack.so", EntryPoint = "serializeIntArrayMinus", CallingConvention = CallingConvention.Cdecl)]
-            public static extern void SerializeArrayMinus();
+            [DllImport("libcMsgPack.so", EntryPoint = "serializeInts", CallingConvention = CallingConvention.Cdecl)]
+            public static extern uint SerializeInts(uint size);
         }
 
         private static class CppNative
         {
-            [DllImport("libcppMsgPack.so", EntryPoint = "serializeIntArray", CallingConvention = CallingConvention.Cdecl)]
-            public static extern void SerializeArray();
-
-            [DllImport("libcMsgPack.so", EntryPoint = "serializeIntArrayMinus", CallingConvention = CallingConvention.Cdecl)]
-            public static extern void SerializeArrayMinus();
+            [DllImport("libcMsgPack.so", EntryPoint = "serializeInts", CallingConvention = CallingConvention.Cdecl)]
+            public static extern uint SerializeInts(uint size);
         }
     }
 }

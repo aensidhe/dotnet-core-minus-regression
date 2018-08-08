@@ -26,7 +26,14 @@ RUN mkdir -p /tmp \
     && rm -rf /tmp/msgpack-c
 
 WORKDIR /app
-RUN mkdir -p reproduction
+RUN mkdir -p reproduction c
+
+ADD c/. /app/c
+
+RUN (cd /app/c \
+    && cmake -DCMAKE_BUILD_TYPE=Release . \
+    && make \
+    && make install)
 
 ADD dotnet-core-minus-regression.sln /app
 ADD reproduction/reproduction.csproj /app/reproduction/
@@ -36,10 +43,5 @@ RUN dotnet restore
 ADD . /app
 
 RUN dotnet build --no-restore -c Release
-
-RUN (cd /app/c \
-    && cmake -DCMAKE_BUILD_TYPE=Release . \
-    && make \
-    && make install)
 
 CMD ["dotnet", "/app/reproduction/bin/Release/netcoreapp2.1/reproduction.dll"]
